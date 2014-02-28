@@ -63,7 +63,7 @@ msgstr "Администрирование"
 
 #: cms_toolbar.py:107
 msgid "User settings"
-msgstr "Настрйки пользователя"
+msgstr "Настройки пользователя"
 
 #: cms_toolbar.py:110
 msgid "Logout"
