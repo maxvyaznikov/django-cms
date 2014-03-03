@@ -10,8 +10,6 @@
 # koodjo <koodjo@mail.ru>, 2012
 # Leonid Kurbatov <llenchikk@rambler.ru>, 2013
 # slam <little_pea@list.ru>, 2013
-# ha7y <maxvyaznikov@gmail.com>, 2014
-# Pylyp Dukhliy <pylyp@pylyp.com.ua>, 2014
 # romans74 <bor@gmx.ru>, 2013
 # m05quit0 <sjkomarov@gmail.com>, 2013
 # andrey_shipilov <tezro.gb@gmail.com>, 2011
@@ -20,7 +18,7 @@ msgstr ""
 "Project-Id-Version: django-cms\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2014-02-12 16:47+0100\n"
-"PO-Revision-Date: 2014-02-27 16:30+0300\n"
+"PO-Revision-Date: 2014-03-03 11:37+0300\n"
 "Last-Translator: Max Vyaznikov <maxvyaznikov@gmail.com>\n"
 "Language-Team: Russian (http://www.transifex.com/projects/p/django-cms/"
 "language/ru/)\n"
@@ -812,7 +810,7 @@ msgstr "может восстанавливать страницы"
 
 #: models/permissionmodels.py:75
 msgid "can recover any deleted page"
-msgstr "может восстанавливать любые удаленные страницы"
+msgstr "может восстанавливать или удалять страницы"
 
 #: models/permissionmodels.py:76
 msgid "If none selected, user haves granted permissions to all sites."
@@ -1601,7 +1599,7 @@ msgstr[2] ""
 #: utils/plugins.py:362
 #, python-format
 msgid "This placeholder already has the maximum number of plugins (%s)."
-msgstr "Этот плейсхолдер уже имеет максимальное число плагинов (%s)."
+msgstr "Этот местозаполнитель уже имеет максимальное число плагинов (%s)."
 
 #: utils/plugins.py:372
 #, python-format
@@ -1609,8 +1607,8 @@ msgid ""
 "This placeholder already has the maximum number (%(limit)s) of allowed "
 "%(plugin_name)s plugins."
 msgstr ""
-"Этот плейсхолдер уже имеет максимальное количество (%(limit)s) плагинов типа "
-"%(plugin_name)s."
+"Этот местозаполнитель уже имеет максимальное количество (%(limit)s) плагинов "
+"типа %(plugin_name)s."
 
 #~ msgid "Use latitude & longitude to fine tune the map position."
 #~ msgstr "Use latitude & longitude to fine tune the map position."
