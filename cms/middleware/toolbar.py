@@ -30,10 +30,10 @@ def toolbar_plugin_processor(instance, placeholder, rendered_content, original_c
             'instance': instance,
             'rendered_content': rendered_content,
             'child_plugin_classes': child_plugin_classes,
-            'edit_url': placeholder.get_edit_url(instance.pk),
-            'add_url': placeholder.get_add_url(),
-            'delete_url': placeholder.get_delete_url(instance.pk),
-            'move_url': placeholder.get_move_url(),
+            'edit_url': placeholder.get_edit_url(instance.pk) if placeholder else None,
+            'add_url': placeholder.get_add_url() if placeholder else None,
+            'delete_url': placeholder.get_delete_url(instance.pk) if placeholder else None,
+            'move_url': placeholder.get_move_url() if placeholder else None,
         }
     original_context.update(data)
     output = render_to_string(instance.get_plugin_class().frontend_edit_template, original_context)

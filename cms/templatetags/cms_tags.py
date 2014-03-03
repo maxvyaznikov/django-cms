@@ -3,7 +3,7 @@ from copy import copy
 from itertools import chain
 from datetime import datetime
 from django.template.defaultfilters import safe
-from classytags.arguments import Argument, MultiValueArgument
+from classytags.arguments import Argument, StringArgument, MultiValueArgument, MultiKeywordArgument
 from classytags.core import Options, Tag
 from classytags.helpers import InclusionTag, AsTag
 from classytags.parser import Parser
@@ -346,6 +346,34 @@ class RenderPlugin(InclusionTag):
 
 
 register.tag(RenderPlugin)
+
+
+class RenderPluginFromTemplate(RenderPlugin):
+    """
+    It standart RenderPlugin but with ability make throw textual name of plugin, not instance
+    @param plugin_name is a textual name of plugin to create
+    """
+    name = 'render_plugin_from_template'
+    options = Options(
+        StringArgument('plugin_name', required=True),
+        MultiKeywordArgument('args', resolve=True, required=False),
+    )
+
+    def get_context(self, context, plugin_name, **kwargs):
+        # return {'content': plugin_name}
+        try:
+            plugin = plugin_pool.get_plugin(plugin_name)
+        except KeyError:
+            raise TypeError(
+                'plugin_type must be CMSPluginBase subclass or string'
+            )
+        model = plugin.model(plugin_type=plugin_name, **kwargs['args'])
+        model.pk = 0
+        model.placeholder_id = 0
+        instance, plugin = model.get_plugin_instance()
+        return super(RenderPluginFromTemplate, self).get_context(context, instance)
+
+register.tag(RenderPluginFromTemplate)
 
 
 class PluginChildClasses(InclusionTag):

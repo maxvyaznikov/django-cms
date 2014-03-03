@@ -166,9 +166,9 @@ class CMSPlugin(with_metaclass(PluginModelBase, MPTTModel)):
     def render_plugin(self, context=None, placeholder=None, admin=False, processors=None):
         instance, plugin = self.get_plugin_instance()
         if instance and not (admin and not plugin.admin_preview):
-            if not placeholder or not isinstance(placeholder, Placeholder):
+            if (not placeholder or not isinstance(placeholder, Placeholder)) and instance.placeholder_id:
                 placeholder = instance.placeholder
-            placeholder_slot = placeholder.slot
+            placeholder_slot = placeholder.slot if placeholder else None
             current_app = context.current_app if context else None
             context = PluginContext(context, instance, placeholder, current_app=current_app)
             context = plugin.render(context, instance, placeholder_slot)
@@ -338,7 +338,7 @@ class CMSPlugin(with_metaclass(PluginModelBase, MPTTModel)):
     def get_breadcrumb(self):
         from cms.models import Page
 
-        model = self.placeholder._get_attached_model()
+        model = self.placeholder._get_attached_model() if self.placeholder else None
         if not model:
             model = Page
         breadcrumb = []
