@@ -2,11 +2,10 @@
 from __future__ import with_statement
 import json
 from cms.api import add_plugin
-from cms.constants import PLUGIN_MOVE_ACTION
+from cms.constants import PLUGIN_MOVE_ACTION, PLUGIN_COPY_ACTION
 from cms.models import StaticPlaceholder, Placeholder, CMSPlugin
 from cms.tests.plugins import PluginsTestBaseCase
 from cms.utils.compat.dj import force_unicode
-from cms.compat import get_user_model
 from django.contrib.admin.sites import site
 from django.template.base import Template
 
@@ -92,7 +91,7 @@ class StaticPlaceholderTestCase(PluginsTestBaseCase):
                 'plugin_parent': '', 'plugin_language': 'en'})
             response = self.admin_class.move_plugin(request)
             self.assertEqual(response.status_code, 200)
-            self.assertEquals(json.loads(response.content.decode('utf8')), expected)
+            self.assertEqual(json.loads(response.content.decode('utf8')), expected)
             source = StaticPlaceholder.objects.get(pk=static_placeholder_source.pk)
             target = StaticPlaceholder.objects.get(pk=static_placeholder_target.pk)
             self.assertTrue(source.dirty)
@@ -132,9 +131,9 @@ class StaticPlaceholderTestCase(PluginsTestBaseCase):
                     }
                 )
             expected = json.loads(
-                json.dumps({'plugin_list': reduced_list, 'reload': plugin_class.requires_reload(PLUGIN_MOVE_ACTION)}))
+                json.dumps({'plugin_list': reduced_list, 'reload': plugin_class.requires_reload(PLUGIN_COPY_ACTION)}))
             self.assertEqual(response.status_code, 200)
-            self.assertEquals(json.loads(response.content.decode('utf8')), expected)
+            self.assertEqual(json.loads(response.content.decode('utf8')), expected)
 
             # Check dirty bit
             source = StaticPlaceholder.objects.get(pk=static_placeholder_source.pk)

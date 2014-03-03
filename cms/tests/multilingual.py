@@ -83,9 +83,9 @@ class MultilingualTestCase(SettingsOverrideTestCase):
             
             # Publish page using the admin
             page_data['published'] = True
-            response = self.client.post(URL_CMS_PAGE_CHANGE_LANGUAGE % (page.pk, TESTLANG),
+            self.client.post(URL_CMS_PAGE_CHANGE_LANGUAGE % (page.pk, TESTLANG),
                                         page_data)
-            response = self.client.post(URL_CMS_PAGE_PUBLISH % (page.pk, TESTLANG))
+            self.client.post(URL_CMS_PAGE_PUBLISH % (page.pk, TESTLANG))
             page = page.reload()
             self.assertTrue(page.is_published(TESTLANG))
             
@@ -105,8 +105,8 @@ class MultilingualTestCase(SettingsOverrideTestCase):
                               language=TESTLANG2, fallback=False)
             
             # Now create it
-            response = self.client.post(URL_CMS_PAGE_CHANGE_LANGUAGE % (page.pk, TESTLANG2),
-                                        page_data2)
+            self.client.post(URL_CMS_PAGE_CHANGE_LANGUAGE % (page.pk, TESTLANG2),
+                             page_data2)
             
             page = page.reload()
             
@@ -260,13 +260,13 @@ class MultilingualTestCase(SettingsOverrideTestCase):
         lang_settings[1][1]['fallbacks'] = []
         with SettingsOverride(CMS_LANGUAGES=lang_settings):
             response = self.client.get("/de/")
-            self.assertEquals(response.status_code, 404)
+            self.assertEqual(response.status_code, 404)
         lang_settings = copy.deepcopy(get_cms_setting('LANGUAGES'))
         lang_settings[1][0]['redirect_on_fallback'] = False
         lang_settings[1][1]['redirect_on_fallback'] = False
         with SettingsOverride(CMS_LANGUAGES=lang_settings):
             response = self.client.get("/de/")
-            self.assertEquals(response.status_code, 302)
+            self.assertEqual(response.status_code, 302)
 
     def test_no_english_defined(self):
         with SettingsOverride(TEMPLATE_CONTEXT_PROCESSORS=[],
@@ -279,4 +279,18 @@ class MultilingualTestCase(SettingsOverrideTestCase):
                 update_site_and_page_choices(lang='en-us')
             except LanguageError:
                 self.fail("LanguageError raised")
+
+    def test_wrong_plugin_language(self):
+        page = create_page("page", "nav_playground.html", "en", published=True)
+        ph_en = page.placeholders.get(slot="body")
+        add_plugin(ph_en, "TextPlugin", "en", body="I'm the first")
+        title = Title(title="page", slug="page", language="ru", page=page)
+        title.save()
+        # add wrong plugin language
+        add_plugin(ph_en, "TextPlugin", "ru", body="I'm the second")
+        page.publish('en')
+        superuser = self.get_superuser()
+        with self.login_user_context(superuser):
+            response = self.client.get('/en/?edit')
+            self.assertEqual(response.status_code, 200)
 
