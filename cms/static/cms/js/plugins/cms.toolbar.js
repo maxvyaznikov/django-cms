@@ -31,6 +31,7 @@ $(document).ready(function () {
 			this.buttons = this.container.find('.cms_toolbar-item-buttons');
 			this.switcher = this.container.find('.cms_toolbar-item_switch');
 			this.messages = this.container.find('.cms_messages');
+			this.screenBlock = this.container.find('.cms_screenblock');
 
 			// states
 			this.click = (document.ontouchstart !== null) ? 'click.cms' : 'touchend.cms';
@@ -85,6 +86,9 @@ $(document).ready(function () {
 				var sideframe = new CMS.Sideframe();
 					sideframe.open(this.settings.sideframe.url, false);
 			}
+
+			// if there is a screenblock, do some resize magic
+			if(this.screenBlock.length) this._screenBlock();
 		},
 
 		_events: function () {
@@ -292,7 +296,7 @@ $(document).ready(function () {
 			this._lock(false);
 		},
 
-		openAjax: function (url, post, text, callback) {
+		openAjax: function (url, post, text, callback, onSuccess) {
 			var that = this;
 
 			// check if we have a confirmation text
@@ -307,6 +311,8 @@ $(document).ready(function () {
 				'success': function () {
 					if(callback) {
 						callback(that);
+					} else if(onSuccess) {
+						CMS.API.Helpers.reloadBrowser(onSuccess);
 					} else {
 						// reload
 						CMS.API.Helpers.reloadBrowser();
@@ -411,7 +417,7 @@ $(document).ready(function () {
 						sideframe.open(el.attr('href'), true);
 					break;
 				case 'ajax':
-					this.openAjax(el.attr('href'), JSON.stringify(el.data('post')), el.data('text'));
+					this.openAjax(el.attr('href'), JSON.stringify(el.data('post')), el.data('text'), null, el.data('on-success'));
 					break;
 				default:
 					window.location.href = el.attr('href');
@@ -454,6 +460,27 @@ $(document).ready(function () {
 						}, timeout);
 					}
 				});
+		},
+
+		_screenBlock: function () {
+			var interval = 20;
+			var blocker = this.screenBlock;
+			var sideframe = $('.cms_sideframe');
+
+			// automatically resize screenblock window according to given attributes
+			$(window).on('resize.cms.screenblock', function () {
+				var width = $(this).width() - sideframe.width();
+
+				blocker.css({
+					'width': width,
+					'height': $(document).height()
+				});
+			}).trigger('resize');
+
+			// set update interval
+			setInterval(function () {
+				$(window).trigger('resize.cms.screenblock');
+			}, interval);
 		}
 
 	});

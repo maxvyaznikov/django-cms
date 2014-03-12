@@ -216,6 +216,9 @@ Displays the URL of a page in the current language.
 Arguments:
 
 - ``page_lookup`` (see `page_lookup`_ for more information)
+- ``as var_name`` (version 3.0 or later, optional; page_url can now be used to assign the resulting
+  URL to a context variable ``var_name``)
+
 
 Example::
 
@@ -228,6 +231,21 @@ exception will not be raised. Additionally, if
 :setting:`django:SEND_BROKEN_LINK_EMAILS` is ``True`` and you have specified
 some addresses in :setting:`django:MANAGERS`, an email will be sent to those
 addresses to inform them of the broken link.
+
+.. versionadded:: 3.0
+    page_url now supports the ``as`` argument. When used this way, the tag
+    emits nothing, but sets a variable in the context with the specified name
+    to the resulting value.
+
+    When using the ``as`` argument PageNotFound exceptions are always
+    suppressed, regardless of the setting of :setting:`django:DEBUG` and the
+    tag will simply emit an empty string in these cases.
+
+Example::
+
+    {# Emit a 'canonical' tag when the page is displayed on an alternate url #}
+    {% page_url request.current_page as current_url %}{% if current_url and current_url != request.get_full_path %}<link rel="canonical" href="{% page_url request.current_page %}">{% endif %}
+
 
 .. templatetag:: page_attribute
 
@@ -311,6 +329,12 @@ Plugins need the ``allow_children`` attribute to set to `True` for this to be en
 render_model
 ============
 
+.. warning::
+
+    ``render_model`` marks as safe the content of the rendered model
+    attribute. This may be a security risk if used on fields which may contains
+    non-trusted content. Be aware, and use the templatetag accordingly.
+
 ``render_model`` is the way to add frontend editing to any Django model.
 It both render the content of the given attribute of the model instance and
 makes it clickable to edit the related model.
@@ -342,10 +366,14 @@ This will render to:
 * ``instance``: instance of your model in the template
 * ``attribute``: the name of the attribute you want to show in the template; it
   can be a context variable name; it's possible to target field, property or
-  callable for the specified model;
+  callable for the specified model; when used on a page object this argument
+  accepts the special ``titles`` value which will show the page **title**
+  field, while allowing editing **title**, **menu title** and **page title**
+  fields in the same form;
 * ``edit_fields`` (optional): a comma separated list of fields editable in the
-  popup editor; the special keyword ``changelist`` can be used to call for the
-  model **changelist** (items list);
+  popup editor; when templatetag is used on a page object this argument
+  accepts the special ``changelist`` value which allows editing the pages
+  **changelist** (items list);
 * ``language`` (optional): the admin language tab to be linked. Useful only for
   `django-hvad`_ enabled models.
 * ``filters`` (optional): a string containing chained filters to apply to the
@@ -356,12 +384,6 @@ This will render to:
   the method must accept ``request`` as first parameter.
 * ``varname`` (optional): the templatetag output can be saved as a context
   variable for later use.
-
-.. warning::
-
-    ``render_model`` marks as safe the content of the rendered model
-    attribute. This may be a security risk if used on fields which may hold
-    non-trusted content. Be aware, and use the templatetag accordingly.
 
 
 .. warning::
@@ -411,8 +433,9 @@ method is available; also templatetags and filters are available in the block.
 
 * ``instance``: instance of your model in the template
 * ``edit_fields`` (optional): a comma separated list of fields editable in the
-  popup editor; the special keyword ``changelist`` can be used to call for the
-  model **changelist** (items list);
+  popup editor; when templatetag is used on a page object this argument
+  accepts the special ``changelist`` value which allows editing the pages
+  **changelist** (items list);
 * ``language`` (optional): the admin language tab to be linked. Useful only for
   `django-hvad`_ enabled models.
 * ``view_url`` (optional): the name of a url that will be reversed using the
@@ -461,8 +484,9 @@ It will render to something like:
 
 * ``instance``: instance of your model in the template
 * ``edit_fields`` (optional): a comma separated list of fields editable in the
-  popup editor; the special keyword ``changelist`` can be used to call for the
-  model **changelist** (items list);
+  popup editor; when templatetag is used on a page object this argument
+  accepts the special ``changelist`` value which allows editing the pages
+  **changelist** (items list);
 * ``language`` (optional): the admin language tab to be linked. Useful only for
   `django-hvad`_ enabled models.
 * ``view_url`` (optional): the name of a url that will be reversed using the

@@ -1,36 +1,48 @@
 # -*- coding: utf-8 -*-
 from __future__ import with_statement
 
-import urllib
-from cms.constants import PUBLISHER_STATE_PENDING
-
-from cms.management.commands.subcommands.moderator import log
-
-from cms.api import (create_page, publish_page, add_plugin,
-                     create_page_user, assign_user_to_page)
-
-from cms.compat import get_user_model, user_related_name
-
-from cms.models import Page, CMSPlugin, Title
-from cms.models.permissionmodels import ACCESS_DESCENDANTS, ACCESS_PAGE_AND_DESCENDANTS
-from cms.models.permissionmodels import PagePermission, GlobalPagePermission
-from cms.plugin_pool import plugin_pool
-from cms.test_utils.testcases import (URL_CMS_PAGE_ADD, URL_CMS_PLUGIN_REMOVE,
-                                      SettingsOverrideTestCase,
-                                      URL_CMS_PLUGIN_ADD, CMSTestCase)
-from cms.test_utils.util.context_managers import SettingsOverride, disable_logger
-from cms.utils.i18n import force_language
-from cms.utils.page_resolver import get_page_from_path
-from cms.utils.permissions import has_generic_permission
-from cms.utils.compat.urls import unquote
-
-from django.contrib.auth.models import Permission, AnonymousUser, Group
+from djangocms_text_ckeditor.models import Text
+from django.contrib.admin.sites import site
+from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth.models import Group
+from django.contrib.auth.models import Permission
 from django.contrib.sites.models import Site
 from django.core.management import call_command
 from django.core.urlresolvers import reverse
 from django.db.models import Q
 
-from djangocms_text_ckeditor.models import Text
+
+from cms.api import add_plugin
+from cms.api import assign_user_to_page
+from cms.api import create_page
+from cms.api import create_page_user
+from cms.api import publish_page
+from cms.admin.forms import save_permissions
+from cms.constants import PUBLISHER_STATE_PENDING
+from cms.compat import get_user_model
+from cms.compat import user_related_name
+from cms.management.commands.subcommands.moderator import log
+from cms.models import Page, CMSPlugin, Title
+from cms.models.permissionmodels import ACCESS_DESCENDANTS
+from cms.models.permissionmodels import ACCESS_PAGE_AND_DESCENDANTS
+from cms.models.permissionmodels import PagePermission
+from cms.models.permissionmodels import GlobalPagePermission
+from cms.plugin_pool import plugin_pool
+from cms.test_utils.testcases import URL_CMS_PAGE_ADD
+from cms.test_utils.testcases import URL_CMS_PLUGIN_REMOVE
+from cms.test_utils.testcases import SettingsOverrideTestCase
+from cms.test_utils.testcases import URL_CMS_PLUGIN_ADD
+from cms.test_utils.testcases import CMSTestCase
+from cms.test_utils.util.context_managers import disable_logger
+from cms.test_utils.util.context_managers import SettingsOverride
+from cms.test_utils.util.request_factory import RequestFactory
+from cms.test_utils.util.fuzzy_int import FuzzyInt
+from cms.utils.compat.urls import unquote
+from cms.utils.i18n import force_language
+from cms.utils.page_resolver import get_page_from_path
+from cms.utils.permissions import has_page_add_permission
+from cms.utils.permissions import has_page_change_permission
+from cms.utils.permissions import has_generic_permission
 
 
 def fake_mptt_attrs(page):
@@ -78,7 +90,6 @@ class PermissionModeratorTests(SettingsOverrideTestCase):
     }
 
     def setUp(self):
-        User = get_user_model()
         # create super user
         self.user_super = self._create_user("super", is_staff=True,
                                             is_superuser=True)
@@ -258,7 +269,6 @@ class PermissionModeratorTests(SettingsOverrideTestCase):
         page = publish_page(copied_page, self.user_master, 'en')
         self.check_published_page_attributes(page)
 
-
     def test_create_publish_copy(self):
         # create new page to copy
         page = create_page("page", "nav_playground.html", "en",
@@ -373,9 +383,6 @@ class PermissionModeratorTests(SettingsOverrideTestCase):
         self.assertFalse(page.publisher_public)
         self.assertTrue(slave_page.publisher_public)
 
-        # reload page
-        page = self.reload(page)
-
     def test_plugins_get_published(self):
         # create page under root
         page = create_page("page", "nav_playground.html", "en")
@@ -421,18 +428,18 @@ class PermissionModeratorTests(SettingsOverrideTestCase):
             }
             remove_url = URL_CMS_PLUGIN_REMOVE + "%s/" % plugin.pk
             response = self.client.post(remove_url, plugin_data)
-            self.assertEquals(response.status_code, 302)
+            self.assertEqual(response.status_code, 302)
 
             # there should only be a public plugin - since the draft has been deleted
-            self.assertEquals(CMSPlugin.objects.all().count(), 1)
+            self.assertEqual(CMSPlugin.objects.all().count(), 1)
 
             page = self.reload(page)
 
             # login as super user and approve/publish the page
-            page = publish_page(page, self.user_super, 'en')
+            publish_page(page, self.user_super, 'en')
 
             # there should now be 0 plugins
-            self.assertEquals(CMSPlugin.objects.all().count(), 0)
+            self.assertEqual(CMSPlugin.objects.all().count(), 0)
 
     def test_superuser_can_view(self):
         url = self.page_b.get_absolute_url(language='en')
@@ -458,7 +465,7 @@ class PermissionModeratorTests(SettingsOverrideTestCase):
         self.assertTrue('_auth_user_id' in self.client.session)
         login_user_id = self.client.session.get('_auth_user_id')
         user = get_user_model().objects.get(pk=self.user_staff.pk)
-        self.assertEquals(login_user_id, user.id)
+        self.assertEqual(login_user_id, user.id)
         response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
 
@@ -466,22 +473,23 @@ class PermissionModeratorTests(SettingsOverrideTestCase):
         url = self.page_b.get_absolute_url(language='en')
         all_view_perms = PagePermission.objects.filter(can_view=True)
         # verifiy that the normal_user has access to this page
-        has_perm = False
+        normal_has_perm = False
         for perm in all_view_perms:
             if perm.page == self.page_b:
                 if perm.user == self.user_normal:
-                    has_perm = True
-        self.assertEqual(has_perm, True)
+                    normal_has_perm = True
+        self.assertTrue(normal_has_perm)
         with self.login_user_context(self.user_normal):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 200)
 
         # verifiy that the user_non_global has not access to this page
-        has_perm = False
+        non_global_has_perm = False
         for perm in all_view_perms:
             if perm.page == self.page_b:
                 if perm.user == self.user_non_global:
-                    has_perm = True
+                    non_global_has_perm = True
+        self.assertFalse(non_global_has_perm)
         with self.login_user_context(self.user_non_global):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 404)
@@ -770,9 +778,9 @@ class ModeratorSwitchCommandTest(CMSTestCase):
         """
         User = get_user_model()
         User.objects.create_superuser('djangocms', 'cms@example.com', '123456')
-        published = create_page("The page!", "nav_playground.html", "en", published=True)
+        create_page("The page!", "nav_playground.html", "en", published=True)
         draft = Page.objects.drafts()[0]
-        draft.reverse_id = 'a_test' # we have to change *something*
+        draft.reverse_id = 'a_test'  # we have to change *something*
         draft.save()
         add_plugin(draft.placeholders.get(slot=u"body"),
                    u"TextPlugin", u"en", body="Test content")
@@ -789,8 +797,8 @@ class ModeratorSwitchCommandTest(CMSTestCase):
         # Sanity check the database (we should have one draft and one public)
         not_drafts = len(Page.objects.filter(publisher_is_draft=False))
         drafts = len(Page.objects.filter(publisher_is_draft=True))
-        self.assertEquals(not_drafts, 1)
-        self.assertEquals(drafts, 1)
+        self.assertEqual(not_drafts, 1)
+        self.assertEqual(drafts, 1)
 
     def test_switch_moderator_off(self):
         with force_language("en"):
@@ -852,9 +860,9 @@ class ViewPermissionTests(PermissionTestsBase):
     def test_public_for_all_num_queries(self):
         user = get_user_model().objects.create_user('user', 'user@domain.com', 'user')
         request = self.get_request(user)
-        site = Site()
-        site.pk = 1
-        site.save()
+        current_site = Site()
+        current_site.pk = 1
+        current_site.save()
         page = Page()
         page.pk = 1
         page.level = 0
@@ -880,8 +888,8 @@ class ViewPermissionTests(PermissionTestsBase):
 
     def test_unauthed_num_queries(self):
         request = self.get_request()
-        site = Site()
-        site.pk = 1
+        current_site = Site()
+        current_site.pk = 1
         page = Page()
         page.pk = 1
         page.level = 0
@@ -907,9 +915,9 @@ class ViewPermissionTests(PermissionTestsBase):
             self.assertTrue(page.has_view_permission(request))
 
     def test_authed_basic_perm_num_queries(self):
-        site = Site()
-        site.pk = 1
-        site.save()
+        current_site = Site()
+        current_site.pk = 1
+        current_site.save()
         with SettingsOverride(CMS_PUBLIC_FOR='staff'):
             user = get_user_model().objects.create_user('user', 'user@domain.com', 'user')
             user.user_permissions.add(Permission.objects.get(codename='view_page'))
@@ -952,8 +960,8 @@ class ViewPermissionTests(PermissionTestsBase):
             self.assertFalse(page.has_view_permission(request))
 
     def test_unauthed_no_access_num_queries(self):
-        site = Site()
-        site.pk = 1
+        current_site = Site()
+        current_site.pk = 1
         request = self.get_request()
         page = Page()
         page.pk = 1
@@ -1023,3 +1031,122 @@ class PagePermissionTests(PermissionTestsBase):
         # the permission_user_cache attribute set
         page = Page.objects.get(pk=page.pk)
         self.assertFalse(page.has_change_permissions_permission(request))
+
+
+class GlobalPermissionTests(SettingsOverrideTestCase):
+
+    def test_sanity_check(self):
+        """ Because we have a new manager, we'll do some basic checks."""
+        # manager is still named the same.
+        self.assertTrue(hasattr(GlobalPagePermission, 'objects'))
+        self.assertEqual(0, GlobalPagePermission.objects.all().count())
+
+        # we are correctly inheriting from BasicPagePermissionManager
+        self.assertTrue(hasattr(GlobalPagePermission.objects, 'with_user'))
+
+        # If we're using the new manager, we have extra methods which ensure
+        # This site access OR all site access.
+        self.assertTrue(hasattr(GlobalPagePermission.objects, 'user_has_permission'))
+        # these are just convienence methods for the above.
+        self.assertTrue(hasattr(GlobalPagePermission.objects, 'user_has_add_permission'))
+        self.assertTrue(hasattr(GlobalPagePermission.objects, 'user_has_change_permission'))
+        self.assertTrue(hasattr(GlobalPagePermission.objects, 'user_has_view_permission'))
+
+    def test_emulate_admin_index(self):
+        """ Call methods that emulate the adminsite instance's index.
+        This test was basically the reason for the new manager, in light of the
+        problem highlighted in ticket #1120, which asserts that giving a user
+        no site-specific rights when creating a GlobalPagePermission should
+        allow access to all sites.
+        """
+        # create and then ignore this user.
+        superuser = self._create_user("super", is_staff=True, is_active=True,
+                                      is_superuser=True)
+        superuser.set_password("super")
+        superuser.save()
+        # create 2 staff users
+        SITES = [
+            Site.objects.get(pk=1),
+            Site.objects.create(domain='example2.com', name='example2.com'),
+        ]
+        USERS = [
+            self._create_user("staff", is_staff=True, is_active=True),
+            self._create_user("staff_2", is_staff=True, is_active=True),
+        ]
+        for user in USERS:
+            user.set_password('staff')
+            # re-use the same methods the UserPage form does.
+            # Note that it internally calls .save(), as we've not done so.
+            save_permissions({
+                'can_add_page': True,
+                'can_change_page': True,
+                'can_delete_page': False
+            }, user)
+
+        GlobalPagePermission.objects.create(can_add=True, can_change=True,
+                                            can_delete=False, user=USERS[0])
+        # we're querying here to ensure that even though we've created two users
+        # above, we should have successfully filtered to just one perm.
+        self.assertEqual(1, GlobalPagePermission.objects.with_user(USERS[0]).count())
+
+        # this will confirm explicit permissions still work, by adding the first
+        # site instance to the many2many relationship 'sites'
+        GlobalPagePermission.objects.create(can_add=True, can_change=True,
+                                            can_delete=False,
+                                            user=USERS[1]).sites.add(SITES[0])
+        self.assertEqual(1, GlobalPagePermission.objects.with_user(USERS[1]).count())
+
+        homepage = create_page(title="master", template="nav_playground.html",
+                               language="en", in_navigation=True, slug='/')
+        publish_page(page=homepage, user=superuser, language='en')
+
+        with SettingsOverride(CMS_PERMISSION=True):
+            # for all users, they should have access to site 1
+            request = RequestFactory().get(path='/', data={'site__exact': 1})
+            # we need a session attribute for current_site(request), which is
+            # used by has_page_add_permission and has_page_change_permission
+            request.session = {}
+            for user in USERS:
+                # has_page_add_permission and has_page_change_permission both test
+                # for this explicitly, to see if it's a superuser.
+                request.user = user
+                # Note, the query count is inflated by doing additional lookups
+                # because there's a site param in the request.
+                with self.assertNumQueries(FuzzyInt(6,7)):
+                    # PageAdmin swaps out the methods called for permissions
+                    # if the setting is true, it makes use of cms.utils.permissions
+                    self.assertTrue(has_page_add_permission(request))
+                    self.assertTrue(has_page_change_permission(request))
+                    # internally this calls PageAdmin.has_[add|change|delete]_permission()
+                    self.assertEqual({'add': True, 'change': True, 'delete': False},
+                                     site._registry[Page].get_model_perms(request))
+
+            # can't use the above loop for this test, as we're testing that
+            # user 1 has access, but user 2 does not, as they are only assigned
+            # to site 1
+            request = RequestFactory().get('/', data={'site__exact': 2})
+            request.session = {}
+            # As before, the query count is inflated by doing additional lookups
+            # because there's a site param in the request
+            with self.assertNumQueries(FuzzyInt(11, 20)):
+                # this user shouldn't have access to site 2
+                request.user = USERS[1]
+                self.assertTrue(not has_page_add_permission(request))
+                self.assertTrue(not has_page_change_permission(request))
+                self.assertEqual({'add': False, 'change': False, 'delete': False},
+                                 site._registry[Page].get_model_perms(request))
+                # but, going back to the first user, they should.
+                request = RequestFactory().get('/', data={'site__exact': 2})
+                request.user = USERS[0]
+                self.assertTrue(has_page_add_permission(request))
+                self.assertTrue(has_page_change_permission(request))
+                self.assertEqual({'add': True, 'change': True, 'delete': False},
+                                 site._registry[Page].get_model_perms(request))
+
+    def test_has_page_add_permission_with_target(self):
+        page = create_page('Test', 'nav_playground.html', 'en')
+        user = self._create_user('user')
+        request = RequestFactory().get('/', data={'target': page.pk})
+        request.user = user
+        has_perm = has_page_add_permission(request)
+        self.assertFalse(has_perm)

@@ -1,22 +1,26 @@
 # -*- coding: utf-8 -*-
-import urllib
-from cms.compat import user_model_label
-from cms.api import get_page_draft
-from cms.constants import TEMPLATE_INHERITANCE_MAGIC, RIGHT
-from cms.exceptions import LanguageError
-from cms.models import Title
-from cms.toolbar.items import TemplateItem
-from cms.toolbar_base import CMSToolbar
-from cms.utils.i18n import get_language_objects, force_language, get_language_object
-from django.contrib.sites.models import Site
-from cms.utils import get_cms_setting
-from cms.toolbar_pool import toolbar_pool
-from cms.utils.permissions import get_user_sites_queryset, has_page_change_permission
 from django.conf import settings
 from django.core.urlresolvers import reverse
 from django.utils.translation import ugettext_lazy as _
 from django.contrib import admin
+from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth.models import User
+from django.contrib.sites.models import Site
+
+from cms.api import get_page_draft
+from cms.compat import user_model_label
+from cms.constants import TEMPLATE_INHERITANCE_MAGIC
+from cms.exceptions import LanguageError
+from cms.models import Title
+from cms.toolbar.items import TemplateItem
+from cms.toolbar_base import CMSToolbar
+from cms.toolbar_pool import toolbar_pool
+from cms.utils.i18n import get_language_objects
+from cms.utils.i18n import force_language
+from cms.utils.i18n import get_language_object
+from cms.utils import get_cms_setting
+from cms.utils.permissions import get_user_sites_queryset
+from cms.utils.permissions import has_page_change_permission
 from menus.utils import DefaultLanguageChanger
 
 
@@ -110,7 +114,28 @@ class BasicToolbar(CMSToolbar):
         admin_menu.add_sideframe_item(_('User settings'), url=reverse('admin:cms_usersettings_change'))
         admin_menu.add_break(USER_SETTINGS_BREAK)
         # logout
-        admin_menu.add_ajax_item(_('Logout'), action=reverse('admin:logout'), active=True)
+        # If current page is not published or has view restrictions user is
+        # redirected to the home page:
+        # * published page: no redirect
+        # * unpublished page: redirect to the home page
+        # * published page with login_required: redirect to the home page
+        # * published page with view permissions: redirect to the home page
+        if self.request.current_page:
+            if not self.request.current_page.is_published(self.current_lang):
+                page = self.request.current_page
+            else:
+                page = self.request.current_page.get_public_object()
+        else:
+            page = None
+        redirect_url = '/'
+        if (page and
+                (not page.is_published(self.current_lang) or page.login_required
+                 or not page.has_view_permission(self.request, AnonymousUser()))):
+            admin_menu.add_ajax_item(_('Logout'), action=reverse('admin:logout'),
+                                     active=True, on_success=redirect_url)
+        else:
+            admin_menu.add_ajax_item(_('Logout'), action=reverse('admin:logout'),
+                                     active=True)
 
     def add_language_menu(self):
         language_menu = self.toolbar.get_or_create_menu(LANGUAGE_MENU_IDENTIFIER, _('Language'))
