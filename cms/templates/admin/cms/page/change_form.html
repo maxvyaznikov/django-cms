@@ -8,8 +8,9 @@
 {{ block.super }}
 <script src="{% static "admin/js/urlify.js" %}"></script>
 <script src="{% static "cms/js/libs/jquery.min.js" %}"></script>
-<script src="{% static "cms/js/plugins/cms.base.js" %}"></script>
-<script src="{% static "cms/js/plugins/cms.changeform.js" %}"></script>
+<script src="{% static "cms/js/libs/class.min.js" %}"></script>
+<script src="{% static "cms/js/modules/cms.base.js" %}"></script>
+<script src="{% static "cms/js/modules/cms.changeform.js" %}"></script>
 {% endblock %}
 
 {% block breadcrumbs %}
@@ -23,7 +24,7 @@
 
 {% block object-tools %}{% endblock %}
 
-<form {% if has_file_field %}enctype="multipart/form-data" {% endif %}action="?language={{ language }}{%if request.GET.target %}&amp;target={{ request.GET.target }}{% endif %}&amp;{%if request.GET.target %}position={{ request.GET.position }}{% endif %}" method="post" id="page_form">
+<form {% if has_file_field %}enctype="multipart/form-data" {% endif %}action="?language={{ language }}{%if request.GET.target %}&amp;target={{ request.GET.target }}{% endif %}{%if request.GET.position %}&amp;position={{ request.GET.position }}{% endif %}{% if request.GET.copy_target %}&amp;copy_target={{ request.GET.copy_target }}{% endif %}{% if request.GET.add_page_type %}&amp;add_page_type={{ request.GET.add_page_type }}{% endif %}" method="post" id="page_form">
 {% csrf_token %}
 {% block form_top %}{% endblock %}
 {{ adminForm.fields.parent }}

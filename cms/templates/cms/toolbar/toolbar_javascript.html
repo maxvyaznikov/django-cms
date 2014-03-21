@@ -10,15 +10,15 @@ var _$ = window.$ || undefined;
 </script>
 <script src="{% static "cms/js/libs/jquery.min.js" %}"></script>
 <script src="{% static "cms/js/libs/class.min.js" %}"></script>
-<script src="{% static "cms/js/plugins/jquery.ui.custom.js" %}"></script>
-<script src="{% static "cms/js/plugins/jquery.ui.nestedsortable.js" %}"></script>
-<script src="{% static "cms/js/plugins/cms.base.js" %}"></script>
-<script src="{% static "cms/js/plugins/cms.modal.js" %}"></script>
-<script src="{% static "cms/js/plugins/cms.sideframe.js" %}"></script>
-<script src="{% static "cms/js/plugins/cms.clipboard.js" %}"></script>
-<script src="{% static "cms/js/plugins/cms.plugins.js" %}"></script>
-<script src="{% static "cms/js/plugins/cms.structureboard.js" %}"></script>
-<script src="{% static "cms/js/plugins/cms.toolbar.js" %}"></script>
+<script src="{% static "cms/js/modules/jquery.ui.custom.js" %}"></script>
+<script src="{% static "cms/js/modules/jquery.ui.nestedsortable.js" %}"></script>
+<script src="{% static "cms/js/modules/cms.base.js" %}"></script>
+<script src="{% static "cms/js/modules/cms.modal.js" %}"></script>
+<script src="{% static "cms/js/modules/cms.sideframe.js" %}"></script>
+<script src="{% static "cms/js/modules/cms.clipboard.js" %}"></script>
+<script src="{% static "cms/js/modules/cms.plugins.js" %}"></script>
+<script src="{% static "cms/js/modules/cms.structureboard.js" %}"></script>
+<script src="{% static "cms/js/modules/cms.toolbar.js" %}"></script>
 {% language request.toolbar.toolbar_language %}
 <script>
 (function($) {
@@ -32,7 +32,10 @@ $(document).ready(function () {
 		'csrf': '{{ csrf_token }}',
 		'request': {
 			'language': '{{ request.GET.language }}',
-			'page_id': '{{ request.current_page.pk }}'
+			'model': '{{ request.toolbar.get_object_model }}',
+			'page_id': '{% if request.current_page.publisher_is_draft %}{{ request.current_page.pk }}{% else %}{{ request.current_page.publisher_public_id }}{% endif %}',
+			'pk': '{{ request.toolbar.get_object_pk }}',
+			'url': '{% language request.toolbar.language %}{% url "admin:cms_page_resolve" %}{% endlanguage %}'
 		},
 		'lang': {
 			'debug': '{% blocktrans %}Development version using django CMS {{ cms_version }}{% endblocktrans %}',
@@ -57,13 +60,8 @@ $(document).ready(function () {
 			'id': '{{ request.toolbar.clipboard.pk|unlocalize }}',
 			'url': '{% if request.toolbar.clipboard.pk %}{% url "admin:cms_page_clear_placeholder" request.toolbar.clipboard.pk %}{% endif %}'
 		},
-		'reload': {
-			'url': '{% url "admin:cms_page_resolve" %}',
-			'model': '{{ request.toolbar.get_object_model }}',
-			'pk': '{{ request.toolbar.get_object_pk }}'
-		},
 		'messages': '{% if messages %}{% for message in messages %}{{ message }}{% endfor %}{% endif %}',
-		'error': '{% if request.toolbar.login_form.errors %}{% blocktrans %}<strong>Login failed.</strong> Please check your credentials and try again.{% endblocktrans %}{% endif %}',
+		'error': '{% if request.toolbar.login_form.errors or cms_toolbar_login_error %}{% blocktrans %}<strong>Login failed.</strong> Please check your credentials and try again.{% endblocktrans %}{% endif %}',
 		'publisher': '{% if not request.current_page.publisher_is_draft and request.current_page.publisher_draft.is_dirty and user.is_authenticated %}{% trans "This page has unpublished changes." %}{% endif %}'
 	};
 	CMS.settings = CMS.API.Helpers.getSettings();

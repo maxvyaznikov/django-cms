@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import with_statement
+from cms.test_utils.util.fuzzy_int import FuzzyInt
 
 from djangocms_text_ckeditor.models import Text
 from django.core.cache import cache
@@ -479,7 +480,8 @@ class PublishingTests(TestCase):
         self.assertEqual(dirty2.get_publisher_state("en"), PUBLISHER_STATE_DIRTY)
 
         home = self.reload(home)
-        home.publish('en')
+        with self.assertNumQueries(FuzzyInt(0, 100)):
+            home.publish('en')
         dirty1 = self.reload(dirty1)
         dirty2 = self.reload(dirty2)
         self.assertTrue(dirty1.is_published("en"))
@@ -574,7 +576,7 @@ class PublishingTests(TestCase):
                 self.assertFalse(item.publisher_public.is_published('en'), title)
                 self.assertEqual(item.get_publisher_state('en'), PUBLISHER_STATE_PENDING,
                                  title)
-                self.assertFalse(item.is_dirty('en'), title)
+                self.assertTrue(item.is_dirty('en'), title)
 
     def test_unpublish_with_dirty_descendants(self):
         page = self.create_page("Page", published=True)
@@ -591,12 +593,38 @@ class PublishingTests(TestCase):
         page.unpublish('en')
         child = self.reload(child)
         gchild = self.reload(gchild)
-        # Descendants keep their dirty status after unpublish
+        # Descendants become dirty after unpublish
         self.assertTrue(child.is_dirty('en'))
-        self.assertFalse(gchild.is_dirty('en'))
+        self.assertTrue(gchild.is_dirty('en'))
         # However, their public version is still removed no matter what
         self.assertFalse(child.publisher_public.is_published('en'))
         self.assertFalse(gchild.publisher_public.is_published('en'))
+
+    def test_prepublish_descendants(self):
+        page = self.create_page("Page", published=True)
+        child = self.create_page("Child", parent=page, published=False)
+        gchild2 = self.create_page("Grandchild2", parent=child, published=False)
+        self.create_page("Grandchild3", parent=child, published=False)
+        gchild = self.create_page("Grandchild", published=True)
+        gchild.move_page(target=child, position='last-child')
+
+        gchild.publish('en')
+        self.assertFalse(child.is_published('en'))
+        self.assertTrue(gchild.is_published('en'))
+        self.assertEqual(gchild.get_publisher_state('en'), PUBLISHER_STATE_PENDING)
+        child = child.reload()
+        child.publish('en')
+        gchild2 = gchild2.reload()
+        gchild2.publish('en')
+        self.assertTrue(child.is_published("en"))
+        self.assertTrue(gchild.is_published("en"))
+        self.assertEqual(gchild.get_publisher_state('en', force_reload=True), PUBLISHER_STATE_DEFAULT)
+        gchild = gchild.reload()
+        gchild2 = gchild2.reload()
+        self.assertEqual(gchild.lft, gchild.publisher_public.lft)
+        self.assertEqual(gchild.rght, gchild.publisher_public.rght)
+
+
 
     def test_republish_multiple_root(self):
         # TODO: The paths do not match expected behaviour

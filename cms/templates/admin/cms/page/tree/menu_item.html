@@ -1,13 +1,13 @@
 {% load cms_admin i18n %}
 
-<div class="cont {{ css_class }}{% if page.id|lower == request.GET.page_id|lower %} cont-active{% endif %}">
+<div class="cont {{ css_class }}{% if page.reverse_id == "page_types" %} cont-pagetype{% endif %}" data-page_id="{{ page.id }}">
 	<div class="col1">
 		{% if has_change_permission %}
 			{% language preview_language %}
-			<a href="{{ page.id }}/{{ preview_language }}/preview/" target="_parent" class="title" {% if cl.is_popup %}onclick="opener.dismissRelatedLookupPopup(window, {{ page.id }}); return false;" title="{% trans "select this page" %}"{% else %}title="{% trans "edit this page" %}"{% endif %}>{{ page.get_admin_tree_title }}</a>
+			<a href="{{ page.id }}/{{ preview_language }}/preview/" target="_parent" class="title" lang="{{ preview_language }}" {% if cl.is_popup %}onclick="opener.dismissRelatedLookupPopup(window, {{ page.id }}); return false;" title="{% trans "select this page" %}"{% else %}title="{% trans "edit this page" %}"{% endif %}>{{ page.get_admin_tree_title }}</a>
 			{% endlanguage %}
 		{% else %}
-			<span class="title">{{ page.get_admin_tree_title }}</span>
+			<span class="title" lang="{{ preview_language }}">{{ page.get_admin_tree_title }}</span>
 		{% endif %}
 	</div>
 	<div class="col2">
@@ -30,8 +30,8 @@
 				<a href="{% if lang in page.languages %}./{{ page.id }}/{{ lang }}/preview/{% else %}./{{ page.id }}/?language={{ lang }}{% endif %}" class="trigger-tooltip"{% if lang in page.languages %} target="_top"{% endif %} title="{% blocktrans with lang|upper as language %}Edit this page in {{ language }} {% endblocktrans %}">{% tree_publish_row page lang %}</a>
 				{% if lang in page.languages %}
 				<div class="language-tooltip" hidden="hidden">
-					<a href="./≈/{{ lang }}/unpublish/">{% trans "Unpublish" %}</a>
-					<a href="./{{ page.id }}/{{ lang }}/publish/">{% trans "Publish" %}</a>
+					<a href="./{{ page.id }}/{{ lang }}/unpublish/?redirect_language={{ preview_language }}&redirect_page_id={{ request.GET.page_id }}">{% trans "Unpublish" %}</a>
+					<a href="./{{ page.id }}/{{ lang }}/publish/?redirect_language={{ preview_language }}&redirect_page_id={{ request.GET.page_id }}">{% trans "Publish" %}</a>
 				</div>
 				{% endif %}
 			{% else %}
@@ -39,7 +39,7 @@
 			{% endif %}
 		</div>
 		{% endfor %}
-		<div class="col-navigation">
+		<div class="col-navigation" title="{% if page.in_navigation %}{% trans "in menu" %}{% else %}{% trans "not in menu" %}{% endif %}">
 			<label>
 				<img alt="{{ page.in_navigation|yesno:"True,False" }}" src="{% cms_admin_icon_base %}icon-{{ page.in_navigation|yesno:"yes,no" }}.gif" />
 				{% if has_change_permission %}<input type="checkbox" class="navigation-checkbox" name="navigation-{{ page.id }}" {% if page.in_navigation %}checked="checked"{% endif %} value="{{ page.in_navigation|yesno:"1,0" }}" />{% endif %}

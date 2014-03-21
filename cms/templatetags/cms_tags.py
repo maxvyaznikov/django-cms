@@ -18,7 +18,7 @@ from cms.utils.compat.type_checks import string_types, int_types
 from cms.utils.i18n import force_language
 from cms.utils.moderator import use_draft
 from cms.utils.page_resolver import get_page_queryset
-from cms.utils.placeholder import validate_placeholder_name, get_toolbar_plugin_struct
+from cms.utils.placeholder import validate_placeholder_name, get_toolbar_plugin_struct, restore_sekizai_context
 from django import template
 from django.conf import settings
 from django.contrib.sites.models import Site
@@ -31,7 +31,7 @@ from django.utils.http import urlencode
 from django.utils.safestring import mark_safe
 from django.utils.translation import ugettext_lazy as _, get_language
 import re
-from sekizai.helpers import Watcher, get_varname
+from sekizai.helpers import Watcher
 from sekizai.templatetags.sekizai_tags import SekizaiParser, RenderBlock
 
 register = template.Library()
@@ -56,7 +56,7 @@ def _get_cache_key(name, page_lookup, lang, site_id):
     else:
         page_key = str(page_lookup)
     page_key = _clean_key(page_key)
-    return name + '__page_lookup:' + page_key + '_site:' + str(site_id) + '_lang:' + str(lang)
+    return get_cms_setting('CACHE_PREFIX') + name + '__page_lookup:' + page_key + '_site:' + str(site_id) + '_lang:' + str(lang)
 
 
 def _get_page_by_untyped_arg(page_lookup, request, site_id):
@@ -184,9 +184,10 @@ def _get_placeholder(current_page, page, context, name):
     else:
         for placeholder in placeholders:
             cache_key = placeholder.get_cache_key(get_language())
-            content = cache.get(cache_key)
-            if not content is None:
-                placeholder.content_cache = content
+            cached_value = cache.get(cache_key)
+            if not cached_value is None:
+                restore_sekizai_context(context, cached_value['sekizai'])
+                placeholder.content_cache = cached_value['content']
             else:
                 fetch_placeholders.append(placeholder)
             placeholder.cache_checked = True
@@ -223,7 +224,8 @@ def get_placeholder_content(context, request, current_page, name, inherit, defau
                 cache_key = placeholder.get_cache_key(get_language())
                 cached_value = cache.get(cache_key)
                 if not cached_value is None:
-                    return mark_safe(cached_value)
+                    restore_sekizai_context(context, cached_value['sekizai'])
+                    return mark_safe(cached_value['content'])
         if not get_plugins(request, placeholder, page.get_template()):
             continue
         content = render_placeholder(placeholder, context, name)
@@ -305,10 +307,17 @@ class Placeholder(Tag):
         if not page or page == 'dummy':
             if nodelist:
                 return nodelist.render(context)
-
             return ''
-
-        content = get_placeholder_content(context, request, page, name, inherit, nodelist)
+        try:
+            content = get_placeholder_content(context, request, page, name, inherit, nodelist)
+        except PlaceholderNotFound:
+            if nodelist:
+                return nodelist.render(context)
+            raise
+        if not content:
+            if nodelist:
+                return nodelist.render(context)
+            return ''
         return content
 
     def get_name(self):
@@ -424,8 +433,8 @@ class PageAttribute(AsTag):
     page_lookup -- lookup argument for Page, if omitted field-name of current page is returned.
     See _get_page_by_untyped_arg() for detailed information on the allowed types and their interpretation
     for the page_lookup argument.
-    
-    varname -- context variable name. Output will be added to template context as this variable. 
+
+    varname -- context variable name. Output will be added to template context as this variable.
     This argument is required to follow the 'as' keyword.
     """
     name = 'page_attribute'
@@ -487,15 +496,6 @@ class CleanAdminListFilter(InclusionTag):
         return {'title': spec.title(), 'choices': unique_choices}
 
 
-def _restore_sekizai(context, changes):
-    varname = get_varname()
-    sekizai_container = context[varname]
-    for key, values in changes.items():
-        sekizai_namespace = sekizai_container[key]
-        for value in values:
-            sekizai_namespace.append(value)
-
-
 def _show_placeholder_for_page(context, placeholder_name, page_lookup, lang=None,
                                site=None, cache_result=True):
     """
@@ -522,12 +522,9 @@ def _show_placeholder_for_page(context, placeholder_name, page_lookup, lang=None
         base_key = _get_cache_key('_show_placeholder_for_page', page_lookup, lang, site_id)
         cache_key = _clean_key('%s_placeholder:%s' % (base_key, placeholder_name))
         cached_value = cache.get(cache_key)
-        if isinstance(cached_value, dict): # new style
-            _restore_sekizai(context, cached_value['sekizai'])
+        if cached_value:
+            restore_sekizai_context(context, cached_value['sekizai'])
             return {'content': mark_safe(cached_value['content'])}
-        elif isinstance(cached_value, string_types): # old style
-            return {'content': mark_safe(cached_value)}
-
     page = _get_page_by_untyped_arg(page_lookup, request, site_id)
     if not page:
         return {'content': ''}
@@ -605,6 +602,9 @@ class CMSToolbar(RenderBlock):
         # render JS
         request = context.get('request', None)
         toolbar = getattr(request, 'toolbar', None)
+        if toolbar:
+            toolbar.populate()
+        context['cms_toolbar_login_error'] = request.GET.get('cms-toolbar-login-error', False) == '1'
         context['cms_version'] = __version__
         if toolbar and toolbar.show_toolbar:
             language = toolbar.toolbar_language
@@ -749,7 +749,10 @@ class CMSEditableObject(InclusionTag):
         Renders the requested attribute
         """
         extra_context = copy(context)
-        extra_context['content'] = getattr(instance, attribute, '')
+        if hasattr(instance, 'lazy_translation_getter'):
+            extra_context['content'] = instance.lazy_translation_getter(attribute, '')
+        else:
+            extra_context['content'] = getattr(instance, attribute, '')
         # This allow the requested item to be a method, a property or an
         # attribute
         if callable(extra_context['content']):
@@ -996,7 +999,8 @@ class StaticPlaceholderNode(Tag):
         if isinstance(code, StaticPlaceholder):
             static_placeholder = code
         else:
-            static_placeholder, __ = StaticPlaceholder.objects.get_or_create(code=code, defaults={'name': code,
+            site = Site.objects.get_current()
+            static_placeholder, __ = StaticPlaceholder.objects.get_or_create(code=code, site_id=site.pk, defaults={'name': code,
                 'creation_method': StaticPlaceholder.CREATION_BY_TEMPLATE})
         if not hasattr(request, 'static_placeholders'):
             request.static_placeholders = []

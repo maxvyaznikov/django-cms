@@ -158,7 +158,7 @@ Functions and constants
     :param bool grant_all: Grant all permissions to the user
     
 
-.. function:: publish_page(page, user)
+.. function:: publish_page(page, user, language)
 
     Publishes a page.
     
@@ -166,6 +166,7 @@ Functions and constants
     :type page: :class:`cms.models.pagemodel.Page` instance
     :param user: The user that performs this action
     :type user: :class:`django.contrib.auth.models.User` instance
+    :param string language: The target language to publish to
 
 .. function:: get_page_draft(page):
 
@@ -483,10 +484,16 @@ cms.toolbar.items
         closes, :attr:`REFRESH_PAGE` to refresh the page when it
         closes or a URL to open once it closes.
 
-    .. method:: add_modal_item(name, url, active=False, disabled=False, extra_classes=None, on_close=None, side=LEFT, position=None)
+    .. method:: add_modal_item(name, url, active=False, disabled=False, extra_classes=None, on_close=REFRESH_PAGE, side=LEFT, position=None)
 
         The same as :meth:`add_sideframe_item`, but opens the ``url`` in a
         modal dialog instead of the side frame.
+
+        ``on_close`` can be set to ``None`` to do nothing when the side modal
+        closes, :attr:`REFRESH_PAGE` to refresh the page when it
+        closes or a URL to open once it closes.
+
+        Note: The default value for ``on_close`` is different in :meth:`add_sideframe_item` then in :meth:`add_modal_item`
 
     .. method:: add_link_item(name, url, active=False, disabled=False, extra_classes=None, side=LEFT, position=None)
 

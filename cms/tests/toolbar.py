@@ -16,14 +16,18 @@ from cms.views import details
 from cms.api import create_page, create_title
 from cms.cms_toolbar import ADMIN_MENU_IDENTIFIER, ADMINISTRATION_BREAK
 from cms.compat import is_user_swapped
-from cms.toolbar.items import ToolbarAPIMixin, LinkItem, ItemSearchResult, Break, SubMenu, \
-    AjaxItem
+from cms.toolbar.items import (ToolbarAPIMixin, LinkItem, ItemSearchResult,
+                               Break, SubMenu, AjaxItem)
 from cms.toolbar.toolbar import CMSToolbar
 from cms.middleware.toolbar import ToolbarMiddleware
-from cms.test_utils.testcases import SettingsOverrideTestCase, URL_CMS_PAGE_ADD, URL_CMS_PAGE_CHANGE
+from cms.test_utils.testcases import (SettingsOverrideTestCase,
+                                      URL_CMS_PAGE_ADD, URL_CMS_PAGE_CHANGE)
 from cms.test_utils.util.context_managers import SettingsOverride
-from cms.test_utils.project.placeholderapp.models import (Example1, MultilingualExample1)
-from cms.test_utils.project.placeholderapp.views import detail_view, detail_view_multi
+from cms.test_utils.project.placeholderapp.models import (Example1,
+                                                          MultilingualExample1)
+from cms.test_utils.project.placeholderapp.views import (detail_view,
+                                                         detail_view_multi,
+                                                         detail_view_multi_unfiltered)
 
 
 class ToolbarTestBase(SettingsOverrideTestCase):
@@ -290,6 +294,18 @@ class ToolbarTests(ToolbarTestBase):
         beta_position = admin_menu.get_alphabetical_insert_position('menu-beta', SubMenu)
         self.assertEqual(beta_position, gamma_position)
 
+    def test_out_of_order(self):
+        page = create_page("toolbar-page", "nav_playground.html", "en",
+                           published=True)
+        request = self.get_page_request(page, self.get_staff(), '/')
+        toolbar = CMSToolbar(request)
+        menu1 = toolbar.get_or_create_menu("test")
+        menu2 = toolbar.get_or_create_menu("test", "Test", side=toolbar.RIGHT, position=2)
+
+        self.assertEqual(menu1, menu2)
+        self.assertEqual(menu1.name, 'Test')
+        self.assertEqual(len(toolbar.get_right_items()), 1)
+
     def test_page_create_redirect(self):
         superuser = self.get_superuser()
         create_page("home", "nav_playground.html", "en",
@@ -297,7 +313,7 @@ class ToolbarTests(ToolbarTestBase):
         resolve_url = reverse('admin:cms_page_resolve')
         with self.login_user_context(superuser):
             response = self.client.post(resolve_url, {'pk': '', 'model': 'cms.page'})
-            self.assertEqual(response.content.decode('utf-8'), '/')
+            self.assertEqual(response.content.decode('utf-8'), '')
             page_data = self.get_new_page_data()
             self.client.post(URL_CMS_PAGE_ADD, page_data)
 
@@ -319,7 +335,7 @@ class ToolbarTests(ToolbarTestBase):
             response = self.client.post(url, {'pk': page1.pk, 'model': 'cms.page'})
             self.assertEqual(response.content.decode('utf-8'), '/en/')
         response = self.client.post(url, {'pk': page1.pk, 'model': 'cms.page'})
-        self.assertEqual(response.content.decode('utf-8'), '/')
+        self.assertEqual(response.content.decode('utf-8'), '')
 
     def test_toolbar_logout_redirect(self):
         """
@@ -923,8 +939,8 @@ class EditModelTemplateTagTest(ToolbarTestBase):
         request = self.get_page_request(page, user, edit=True)
         request.GET['edit_fields'] = 'char_3'
         response = exadmin.edit_field(request, ex1.pk, "en")
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.content.decode('utf8'), 'Fields char_3 not editabled in the frontend')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Field char_3 not found')
 
     def test_multi_edit(self):
         user = self.get_staff()
@@ -959,6 +975,37 @@ class EditModelTemplateTagTest(ToolbarTestBase):
                 '<h1><div class="cms_plugin cms_plugin-%s-%s-%s-%s cms_render_model">un</div></h1>' % (
                     'placeholderapp', 'multilingualexample1', 'char_1', exm.pk))
             self.assertContains(response, "/admin/placeholderapp/multilingualexample1/edit-field/%s/fr/" % exm.pk)
+            self.assertTrue(re.search(self.edit_fields_rx % "char_1%2Cchar_2", response.content.decode('utf8')))
+
+    def test_multi_edit_no500(self):
+        user = self.get_staff()
+        page = create_page('Test', 'col_two.html', 'en', published=True)
+        title = create_title("fr", "test", page)
+
+        exm = MultilingualExample1()
+        exm.translate("fr")
+        exm.char_1 = "un"
+        exm.char_2 = "deux"
+        exm.save()
+
+        with SettingsOverride(LANGUAGE_CODE="fr"):
+            request = self.get_page_request(title.page, user, edit=True, lang_code="fr")
+            response = detail_view_multi_unfiltered(request, exm.pk)
+            self.assertContains(
+                response,
+                '<h1><div class="cms_plugin cms_plugin-%s-%s-%s-%s cms_render_model">un</div></h1>' % (
+                    'placeholderapp', 'multilingualexample1', 'char_1', exm.pk))
+            self.assertContains(response, "/admin/placeholderapp/multilingualexample1/edit-field/%s/fr/" % exm.pk)
+            self.assertTrue(re.search(self.edit_fields_rx % "char_1%2Cchar_2", response.content.decode('utf8')))
+
+        with SettingsOverride(LANGUAGE_CODE="de"):
+            request = self.get_page_request(title.page, user, edit=True, lang_code="de")
+            response = detail_view_multi_unfiltered(request, exm.pk)
+            self.assertContains(
+                response,
+                '<h1><div class="cms_plugin cms_plugin-%s-%s-%s-%s cms_render_model">un</div></h1>' % (
+                    'placeholderapp', 'multilingualexample1', 'char_1', exm.pk))
+            self.assertContains(response, "/admin/placeholderapp/multilingualexample1/edit-field/%s/de/" % exm.pk)
             self.assertTrue(re.search(self.edit_fields_rx % "char_1%2Cchar_2", response.content.decode('utf8')))
 
     def test_edit_field_multilingual(self):

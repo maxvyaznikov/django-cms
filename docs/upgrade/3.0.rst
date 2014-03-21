@@ -13,6 +13,8 @@ What's new in 3.0
     3.0 introduces some changes that **require** action if you are upgrading
     from a previous version.
 
+.. note:: :ref:`Click here to see the quick upgrade guide <upgrading-from-2.4>`
+
 New Frontend Editing
 ====================
 
@@ -43,6 +45,13 @@ objects. See :doc:`../extending_cms/toolbar`.
     3.0 now requires the ``django.contrib.messages`` application for the
     toolbar to work. See :ref:`Enable messages <enable-messages>` for how to
     enable it.
+
+New Page Types
+==============
+
+You can now save pages as page types. If you then create a new page you may
+select a page type and all plugins and contents will be pre-filled.
+
 
 Experimental Python 3.3 support
 ===============================
@@ -96,6 +105,8 @@ Undo and Redo
 If you have ``django-reversion`` installed you now have **undo** and **redo**
 options available directly in the toolbar. These can now revert *plugin*
 content as well as *page* content.
+
+.. _ex-core-plugins:
 
 Plugins removed
 ===============
@@ -199,13 +210,14 @@ Snippet Plugin
 We removed the snippet plugin (``cms.plugins.snippet``).
 Its new location is at:
 
-* https://github.com/divio/djangocms-link
+* https://github.com/divio/djangocms-snippet
 
 As an alternative, you could also use the following (yet you will not be able
 to keep your existing files from the old ``cms.plugins.snippet``!)
 
 * https://github.com/pbs/django-cms-smartsnippets
 
+.. _cmsplugin-twitter-removed:
 
 Twitter Plugin
 --------------
@@ -399,6 +411,54 @@ CMS_TEMPLATE context variable
 A new ``CMS_TEMPLATE`` variable is now available in the context: it contains the path to the
 current page template.
 See :ref:`CMS_TEMPLATE reference <page_template>` for details.
+
+
+.. _upgrading-from-2.4:
+
+******************
+Upgrading from 2.4
+******************
+
+If you want to upgrade from version 2.4 to 3.0, there's a few things you need to do.
+Start of by updating the cms' package::
+
+    pip install django-cms==3.0
+
+
+Next, you need to make the following changes in your ``settings.py``
+
+* settings.INSTALLED_APPS
+
+    * Remove ``cms.plugin.twitter``. This package has been deprecated, see :ref:`cmsplugin-twitter-removed`.
+    * Rename all the other ``cms.plugins.X`` to ``djangocms_X``, see :ref:`ex-core-plugins`.
+
+* settings.CONTEXT_PROCESSORS
+
+    * Replace ``cms.context_processors.media`` with ``cms.context_processors.cms_settings``
+
+Afterwards, install all your previously renamed ex-core plugins (djangocms-X). Here's a full list, but you probably
+don't need all of them::
+
+    pip install djangocms-file
+    pip install djangocms-flash
+    pip install djangocms-googlemap
+    pip install djangocms-inherit
+    pip install djangocms-picture
+    pip install djangocms-teaser
+    pip install djangocms-video
+    pip install djangocms-link
+    pip install djangocms-snippet
+
+
+Also, please check your templates to make sure that you haven't put the ``{% cms_toolbar %}`` tag into a ``{% block %}``
+tag. This is not allowed in 3.0 anymore.
+
+To finish up, please update your database::
+
+    python manage.py syncdb
+    python manage.py migrate  (answer yes if your prompted to delete stale content types)
+
+That's it!
 
 ********************
 Pending deprecations

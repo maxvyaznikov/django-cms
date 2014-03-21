@@ -117,7 +117,6 @@ def configure(db_url, **extra):
             'reversion',
             'sekizai',
             'hvad',
-
         ],
         DEBUG_TOOLBAR_PATCH_SETTINGS = False,
         INTERNAL_IPS = ['127.0.0.1'],
@@ -208,7 +207,6 @@ def configure(db_url, **extra):
                 'TextPlugin', 'SnippetPlugin'),
                 'name': gettext("sidebar column")
             },
-
             'col_left': {
                 'plugins': ('FilePlugin', 'FlashPlugin', 'LinkPlugin', 'PicturePlugin',
                 'TextPlugin', 'SnippetPlugin', 'GoogleMapPlugin', 'MultiColumnPlugin', 'StylePlugin'),
@@ -218,9 +216,8 @@ def configure(db_url, **extra):
                 },
                 'plugin_labels': {
                     'LinkPlugin': gettext('Add a link')
-                }
+                },
             },
-
             'col_right': {
                 'plugins': ('FilePlugin', 'FlashPlugin', 'LinkPlugin', 'PicturePlugin',
                 'TextPlugin', 'SnippetPlugin', 'GoogleMapPlugin', 'MultiColumnPlugin', 'StylePlugin'),

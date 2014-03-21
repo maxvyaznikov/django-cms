@@ -118,7 +118,7 @@ class Page(with_metaclass(PageMetaClass, MPTTModel)):
             ('view_page', 'Can view page'),
             ('publish_page', 'Can publish page'),
         )
-        unique_together = (("publisher_is_draft", "application_namespace"),)
+        unique_together = (("publisher_is_draft", "application_namespace"), ("reverse_id", "site", "publisher_is_draft"))
         verbose_name = _('page')
         verbose_name_plural = _('pages')
         ordering = ('tree_id', 'lft')
@@ -147,7 +147,8 @@ class Page(with_metaclass(PageMetaClass, MPTTModel)):
         return object.__repr__(self)
 
     def is_dirty(self, language):
-        return self.get_publisher_state(language) == PUBLISHER_STATE_DIRTY
+        state = self.get_publisher_state(language)
+        return state == PUBLISHER_STATE_DIRTY or state == PUBLISHER_STATE_PENDING
 
     def get_absolute_url(self, language=None, fallback=True):
         if self.is_home:
@@ -173,7 +174,6 @@ class Page(with_metaclass(PageMetaClass, MPTTModel)):
 
         # make sure move_page does not break when using INHERIT template
         # and moving to a top level position
-
         if (position in ('left', 'right') and not target.parent and is_inherited_template):
             self.template = self.get_template()
         self.move_to(target, position)
@@ -244,7 +244,14 @@ class Page(with_metaclass(PageMetaClass, MPTTModel)):
         from cms.plugin_pool import plugin_pool
 
         plugin_pool.set_plugin_meta()
-        CMSPlugin.objects.filter(placeholder__page=target, language=language).delete()
+        for plugin in CMSPlugin.objects.filter(placeholder__page=target, language=language).order_by('-level'):
+            inst, cls = plugin.get_plugin_instance()
+            if inst and getattr(inst, 'cmsplugin_ptr', False):
+                inst.cmsplugin_ptr._no_reorder = True
+                inst.delete()
+            else:
+                plugin._no_reorder = True
+                plugin.delete()
         for ph in self.placeholders.all():
             plugins = ph.get_plugins_list(language)
             try:
@@ -255,21 +262,22 @@ class Page(with_metaclass(PageMetaClass, MPTTModel)):
                 target.placeholders.add(ph)
                 # update the page copy
             if plugins:
-                copy_plugins_to(plugins, ph)
+                copy_plugins_to(plugins, ph, no_signals=True)
 
-    def _copy_attributes(self, target):
+    def _copy_attributes(self, target, clean=False):
         """
         Copy all page data to the target. This excludes parent and other values
         that are specific to an exact instance.
         :param target: The Page to copy the attributes to
         """
-        target.publication_date = self.publication_date
-        target.publication_end_date = self.publication_end_date
-        target.in_navigation = self.in_navigation
+        if not clean:
+            target.publication_date = self.publication_date
+            target.publication_end_date = self.publication_end_date
+            target.reverse_id = self.reverse_id
         target.login_required = self.login_required
-        target.limit_visibility_in_menu = self.limit_visibility_in_menu
+        target.in_navigation = self.in_navigation
         target.soft_root = self.soft_root
-        target.reverse_id = self.reverse_id
+        target.limit_visibility_in_menu = self.limit_visibility_in_menu
         target.navigation_extenders = self.navigation_extenders
         target.application_urls = self.application_urls
         target.application_namespace = self.application_namespace
@@ -609,6 +617,9 @@ class Page(with_metaclass(PageMetaClass, MPTTModel)):
                                                     title_set__language=language).select_related('publisher_public')
         for page in publish_set:
             if page.publisher_public:
+                if not page.publisher_public.parent_id:
+                    page.publisher_public.parent = page.parent.publisher_public
+                    page.publisher_public.save()
                 if page.publisher_public.parent.is_published(language):
                     from cms.models import Title
                     try:
@@ -678,10 +689,14 @@ class Page(with_metaclass(PageMetaClass, MPTTModel)):
         assert self.publisher_is_draft
         # Go through all children of our public instance
         public_page = self.publisher_public
+        from cms.models import Title
         if public_page:
-            descendants = public_page.get_descendants()
+            descendants = public_page.get_descendants().filter(title_set__language=language)
             for child in descendants:
-                child.set_publisher_state(language, PUBLISHER_STATE_PENDING, published=False)
+                try:
+                    child.set_publisher_state(language, PUBLISHER_STATE_PENDING, published=False)
+                except Title.DoesNotExist:
+                    continue
                 draft = child.publisher_public
                 if draft and draft.is_published(language) and draft.get_publisher_state(
                         language) == PUBLISHER_STATE_DEFAULT:

@@ -40,14 +40,14 @@ class ShowAdminMenu(InclusionTag):
             filtered = context['cl'].is_filtered()
         elif context.has_key('filtered'):
             filtered = context['filtered']
-
+        language = context['preview_language']
 
 
         # following function is newly used for getting the context per item (line)
         # if something more will be required, then get_admin_menu_item_context
         # function have to be updated. 
         # This is done because item can be reloaded after some action over ajax.
-        context.update(get_admin_menu_item_context(request, page, filtered))
+        context.update(get_admin_menu_item_context(request, page, filtered, language))
 
         # this here is just context specific for menu rendering - items itself does
         # not use any of following variables
@@ -78,8 +78,10 @@ class TreePublishRow(Tag):
         else:
 
             if language in page.languages:
-                if page.publisher_public_id and page.publisher_public.get_publisher_state(
-                    language) == PUBLISHER_STATE_PENDING:
+                public_pending = page.publisher_public_id and page.publisher_public.get_publisher_state(
+                        language) == PUBLISHER_STATE_PENDING
+                if public_pending or page.get_publisher_state(
+                        language) == PUBLISHER_STATE_PENDING:
                     cls = "unpublishedparent"
                     text = _("unpublished parent")
                 else:
@@ -93,13 +95,14 @@ class TreePublishRow(Tag):
 
 register.tag(TreePublishRow)
 
+
 @register.filter
 def is_published(page, language):
     if page.is_published(language) and page.publisher_public_id and page.publisher_public.is_published(language):
         return True
     else:
         if language in page.languages and page.publisher_public_id and page.publisher_public.get_publisher_state(
-                    language) == PUBLISHER_STATE_PENDING:
+                language) == PUBLISHER_STATE_PENDING:
             return True
         return False
 
@@ -121,12 +124,12 @@ class ShowLazyAdminMenu(InclusionTag):
             filtered = context['filtered']
 
 
-
+        language = context['preview_language']
         # following function is newly used for getting the context per item (line)
         # if something more will be required, then get_admin_menu_item_context
         # function have to be updated. 
         # This is done because item can be reloaded after some action over ajax.
-        context.update(get_admin_menu_item_context(request, page, filtered))
+        context.update(get_admin_menu_item_context(request, page, filtered, language))
 
         # this here is just context specific for menu rendering - items itself does
         # not use any of following variables

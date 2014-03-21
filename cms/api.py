@@ -7,6 +7,7 @@ You must implement the necessary permission checks in your own code before
 calling these methods!
 """
 import datetime
+from cms.constants import TEMPLATE_INHERITANCE_MAGIC
 
 from django.contrib.sites.models import Site
 from django.core.exceptions import FieldError
@@ -31,6 +32,7 @@ from cms.utils.compat.type_checks import string_types
 from cms.utils.conf import get_cms_setting
 from cms.utils.i18n import get_language_list
 from cms.utils.permissions import _thread_locals
+from django.template.loader import get_template
 from menus.menu_pool import menu_pool
 
 
@@ -73,11 +75,18 @@ def _verify_apphook(apphook, namespace):
     """
     apphook_pool.discover_apps()
     if hasattr(apphook, '__module__') and issubclass(apphook, CMSApp):
-        assert apphook in apphook_pool.apps.values()
+        try:
+            assert apphook in apphook_pool.apps.values()
+        except AssertionError:
+            print(apphook_pool.apps.values())
+            raise
         return apphook.__name__
     elif isinstance(apphook, string_types):
-        apphook_pool.discover_apps()
-        assert apphook in apphook_pool.apps
+        try:
+            assert apphook in apphook_pool.apps
+        except AssertionError:
+            print(apphook_pool.apps.values())
+            raise
         apphook_name = apphook
     else:
         raise TypeError("apphook must be string or CMSApp instance")
@@ -134,7 +143,9 @@ def create_page(title, template, language, menu_title=None, slug=None,
         _thread_locals.user = None
 
     # validate template
-    assert template in [tpl[0] for tpl in get_cms_setting('TEMPLATES')]
+    if not template == TEMPLATE_INHERITANCE_MAGIC:
+        assert template in [tpl[0] for tpl in get_cms_setting('TEMPLATES')]
+        get_template(template)
 
     # validate site
     if not site:

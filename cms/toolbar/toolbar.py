@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from cms.constants import LEFT
+from cms.constants import LEFT, REFRESH_PAGE
 from cms.models import UserSettings, Placeholder
 from cms.toolbar.items import Menu, ToolbarAPIMixin, ButtonList
 from cms.toolbar_pool import toolbar_pool
@@ -8,7 +8,7 @@ from cms.utils.i18n import force_language
 
 from django import forms
 from django.conf import settings
-from django.contrib.auth import login, logout
+from django.contrib.auth import login, logout, REDIRECT_FIELD_NAME
 from django.contrib.auth.forms import AuthenticationForm
 from django.core.urlresolvers import resolve, Resolver404
 from django.http import HttpResponseRedirect, HttpResponse
@@ -47,6 +47,7 @@ class CMSToolbar(ToolbarAPIMixin):
         self.use_draft = self.is_staff and self.edit_mode or self.build_mode
         self.show_toolbar = self.is_staff or self.request.session.get('cms_edit', False)
         self.obj = None
+        self.redirect_url = None
         if settings.USE_I18N:
             self.language = get_language_from_request(request)
         else:
@@ -95,10 +96,24 @@ class CMSToolbar(ToolbarAPIMixin):
 
     # Public API
 
-    def get_or_create_menu(self, key, verbose_name=None, side=LEFT, position=None):
+    def get_menu(self, key, verbose_name=None, side=LEFT, position=None):
         self.populate()
         if key in self.menus:
             return self.menus[key]
+        return None
+
+    def get_or_create_menu(self, key, verbose_name=None, side=LEFT, position=None):
+        self.populate()
+        if key in self.menus:
+            menu = self.menus[key]
+            if verbose_name:
+                menu.name = verbose_name
+            if menu.side != side:
+                menu.side = side
+            if position:
+                self.remove_item(menu)
+                self.add_item(menu, position=position)
+            return menu
         menu = Menu(verbose_name, self.csrf_token, side=side)
         self.menus[key] = menu
         self.add_item(menu, position=position)
@@ -109,6 +124,22 @@ class CMSToolbar(ToolbarAPIMixin):
         self.populate()
         item = ButtonList(extra_classes=extra_wrapper_classes, side=side)
         item.add_button(name, url, active=active, disabled=disabled, extra_classes=extra_classes)
+        self.add_item(item, position=position)
+        return item
+
+    def add_modal_button(self, name, url, active=False, disabled=False, extra_classes=None, extra_wrapper_classes=None,
+                   side=LEFT, position=None, on_close=REFRESH_PAGE):
+        self.populate()
+        item = ButtonList(extra_classes=extra_wrapper_classes, side=side)
+        item.add_modal_button(name, url, active=active, disabled=disabled, extra_classes=extra_classes, on_close=on_close)
+        self.add_item(item, position=position)
+        return item
+
+    def add_sideframe_button(self, name, url, active=False, disabled=False, extra_classes=None, extra_wrapper_classes=None,
+                   side=LEFT, position=None, on_close=None):
+        self.populate()
+        item = ButtonList(extra_classes=extra_wrapper_classes, side=side)
+        item.add_sideframe_button(name, url, active=active, disabled=disabled, extra_classes=extra_classes, on_close=on_close)
         self.add_item(item, position=position)
         return item
 
@@ -216,7 +247,13 @@ class CMSToolbar(ToolbarAPIMixin):
             self.login_form = CMSToolbarLoginForm(request=self.request, data=self.request.POST)
             if self.login_form.is_valid():
                 login(self.request, self.login_form.user_cache)
-                return HttpResponseRedirect(self.request.path)
+                if REDIRECT_FIELD_NAME in self.request.GET:
+                    return HttpResponseRedirect(self.request.GET[REDIRECT_FIELD_NAME])
+                else:
+                    return HttpResponseRedirect(self.request.path)
+            else:
+                if REDIRECT_FIELD_NAME in self.request.GET:
+                    return HttpResponseRedirect(self.request.GET[REDIRECT_FIELD_NAME]+"?cms-toolbar-login-error=1")
 
     def _call_toolbar(self, func_name):
         with force_language(self.toolbar_language):

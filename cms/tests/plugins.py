@@ -2,6 +2,8 @@
 from __future__ import with_statement
 import datetime
 import json
+from cms.test_utils.util.fuzzy_int import FuzzyInt
+from django.core.cache import cache
 import os
 
 from djangocms_googlemap.models import GoogleMap
@@ -412,6 +414,9 @@ class PluginsTestCase(PluginsTestBaseCase):
         mcol1 = self.reload(mcol1)
         self.assertEqual(mcol1.get_descendants().count(), 2)
 
+        with self.assertNumQueries(FuzzyInt(0, 200)):
+            page_en.publish('en')
+
     def test_plugin_validation(self):
         self.assertRaises(ImproperlyConfigured, plugin_pool.register_plugin, NonExisitngRenderTemplate)
         self.assertRaises(ImproperlyConfigured, plugin_pool.register_plugin, NoRender)
@@ -564,6 +569,7 @@ class PluginsTestCase(PluginsTestBaseCase):
         """
         Test case for InheritPagePlaceholder
         """
+
         inheritfrompage = api.create_page('page to inherit from',
                                       'nav_playground.html',
                                       'en')
@@ -600,10 +606,10 @@ class PluginsTestCase(PluginsTestBaseCase):
         page.publish('en')
 
         self.client.logout()
+        cache.clear()
         response = self.client.get(page.get_absolute_url())
         self.assertTrue(
-            'https://maps-api-ssl.google.com/maps/api/js?v=3&sensor=true' in response.content.decode('utf8'),
-            response.content)
+            'https://maps-api-ssl.google.com/maps/api/js?v=3&sensor=true' in response.content.decode('utf8').replace("&amp;", "&"))
 
     def test_inherit_plugin_with_empty_plugin(self):
         inheritfrompage = api.create_page('page to inherit from',

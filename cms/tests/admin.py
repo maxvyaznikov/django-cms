@@ -15,13 +15,12 @@ from django.http import (Http404, HttpResponseBadRequest, HttpResponseForbidden,
 from django.utils.datastructures import MultiValueDictKeyError
 from django.utils.encoding import smart_str
 from django.utils import timezone
-
 from cms.test_utils.util.fuzzy_int import FuzzyInt
 from cms.admin.change_list import CMSChangeList
 from cms.admin.forms import PageForm, AdvancedSettingsForm
 from cms.admin.pageadmin import PageAdmin
 from cms.admin.permissionadmin import PagePermissionInlineAdmin
-from cms.api import create_page, create_title, add_plugin, assign_user_to_page
+from cms.api import create_page, create_title, add_plugin, assign_user_to_page, publish_page
 from cms.compat import get_user_model
 from cms.constants import PLUGIN_MOVE_ACTION
 from cms.models import UserSettings, StaticPlaceholder
@@ -156,7 +155,7 @@ class AdminTestCase(AdminTestsBase):
                 'site': page.site.pk,
                 'template': page.template,
                 'reverse_id': page.reverse_id,
-                'pagepermission_set-TOTAL_FORMS': 0, # required only if user haves can_change_permission
+                'pagepermission_set-TOTAL_FORMS': 0,  # required only if user haves can_change_permission
                 'pagepermission_set-INITIAL_FORMS': 0,
                 'pagepermission_set-MAX_NUM_FORMS': 0,
                 'pagepermission_set-2-TOTAL_FORMS': 0,
@@ -268,7 +267,7 @@ class AdminTestCase(AdminTestsBase):
         page = create_page(PAGE1, "nav_playground.html", "en",
                            site=current_site, created_by=admin_user)
         page2 = create_page(PAGE2, "nav_playground.html", "en",
-                           site=current_site, created_by=admin_user)
+                            site=current_site, created_by=admin_user)
 
         page.application_urls = APPLICATION_URLS
         page.application_namespace = "space1"
@@ -283,8 +282,8 @@ class AdminTestCase(AdminTestsBase):
             'language': 'en',
             'site': page.site.pk,
             'template': page2.template,
-            'application_urls':'SampleApp',
-            'application_namespace':'space1',
+            'application_urls': 'SampleApp',
+            'application_namespace': 'space1',
         }
 
         with self.login_user_context(admin_user):
@@ -299,9 +298,28 @@ class AdminTestCase(AdminTestsBase):
 
     def test_delete(self):
         admin_user = self.get_superuser()
+        create_page("home", "nav_playground.html", "en",
+                           created_by=admin_user, published=True)
         page = create_page("delete-page", "nav_playground.html", "en",
                            created_by=admin_user, published=True)
         create_page('child-page', "nav_playground.html", "en",
+                    created_by=admin_user, published=True, parent=page)
+        body = page.placeholders.get(slot='body')
+        add_plugin(body, 'TextPlugin', 'en', body='text')
+        page.publish('en')
+        with self.login_user_context(admin_user):
+            data = {'post': 'yes'}
+            with self.assertNumQueries(FuzzyInt(300, 382)):
+                response = self.client.post(URL_CMS_PAGE_DELETE % page.pk, data)
+            self.assertRedirects(response, URL_CMS_PAGE)
+
+    def test_delete_diff_language(self):
+        admin_user = self.get_superuser()
+        create_page("home", "nav_playground.html", "en",
+                           created_by=admin_user, published=True)
+        page = create_page("delete-page", "nav_playground.html", "en",
+                           created_by=admin_user, published=True)
+        create_page('child-page', "nav_playground.html", "de",
                     created_by=admin_user, published=True, parent=page)
         body = page.placeholders.get(slot='body')
         add_plugin(body, 'TextPlugin', 'en', body='text')
@@ -430,7 +448,8 @@ class AdminTestCase(AdminTestsBase):
         second_level_page_top = create_page('level21', "nav_playground.html", "en",
                                             created_by=admin_user, published=True, parent=first_level_page)
         second_level_page_bottom = create_page('level22', "nav_playground.html", "en",
-                                               created_by=admin_user, published=True, parent=self.reload(first_level_page))
+                                               created_by=admin_user, published=True,
+                                               parent=self.reload(first_level_page))
         third_level_page = create_page('level3', "nav_playground.html", "en",
                                        created_by=admin_user, published=True, parent=second_level_page_top)
         self.assertEqual(Page.objects.all().count(), 4)
@@ -447,7 +466,7 @@ class AdminTestCase(AdminTestsBase):
             page_admin.list_display_links, page_admin.list_filter,
             page_admin.date_hierarchy, page_admin.search_fields,
             page_admin.list_select_related, page_admin.list_per_page]
-        if hasattr(page_admin, 'list_max_show_all'): # django 1.4
+        if hasattr(page_admin, 'list_max_show_all'):  # django 1.4
             cl_params.append(page_admin.list_max_show_all)
         cl_params.extend([page_admin.list_editable, page_admin])
         cl = CMSChangeList(*tuple(cl_params))
@@ -472,23 +491,24 @@ class AdminTestCase(AdminTestsBase):
         second_level_page_top = create_page('level21', "nav_playground.html", "en",
                                             created_by=admin_user, published=True, parent=first_level_page)
         second_level_page_bottom = create_page('level22', "nav_playground.html", "en",
-                                               created_by=admin_user, published=True, parent=self.reload(first_level_page))
+                                               created_by=admin_user, published=True,
+                                               parent=self.reload(first_level_page))
         third_level_page = create_page('level3', "nav_playground.html", "en",
                                        created_by=admin_user, published=True, parent=second_level_page_top)
 
         url = reverse('admin:cms_%s_changelist' % Page._meta.module_name)
-        
+
         if get_user_model().USERNAME_FIELD == 'email':
             self.client.login(username='admin@django-cms.org', password='admin@django-cms.org')
-        else:    
+        else:
             self.client.login(username='admin', password='admin')
-        
+
         self.client.cookies['djangocms_nodes_open'] = 'page_1%2Cpage_2'
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["open_menu_trees"], [1, 2])
         # tests descendants method for the lazy load ajax call
-        url = "%s%d/descendants/" % (url, first_level_page.pk)
+        url = "%s%d/en/descendants/" % (url, first_level_page.pk)
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         # should include both direct descendant pages
@@ -496,6 +516,7 @@ class AdminTestCase(AdminTestsBase):
         self.assertContains(response, 'id="page_%s"' % second_level_page_bottom.pk)
         # but not any further down the tree
         self.assertNotContains(response, 'id="page_%s"' % third_level_page.pk)
+        self.assertNotContains(response, 'None')
 
     def test_unihandecode_doesnt_break_404_in_admin(self):
         self.get_superuser()
@@ -504,7 +525,7 @@ class AdminTestCase(AdminTestsBase):
             self.client.login(username='admin@django-cms.org', password='admin@django-cms.org')
         else:
             self.client.login(username='admin', password='admin')
-        
+
         response = self.client.get('/en/admin/cms/page/1/?language=en')
         self.assertEqual(response.status_code, 404)
 
@@ -548,7 +569,7 @@ class AdminTests(AdminTestsBase):
 
         fields = dict(email="admin@django-cms.org", is_staff=True, is_superuser=True)
 
-        if(User.USERNAME_FIELD != 'email'):
+        if (User.USERNAME_FIELD != 'email'):
             fields[User.USERNAME_FIELD] = "admin"
 
         usr = User(**fields)
@@ -561,7 +582,7 @@ class AdminTests(AdminTestsBase):
 
         fields = dict(email="permless@django-cms.org", is_staff=True)
 
-        if(User.USERNAME_FIELD != 'email'):
+        if (User.USERNAME_FIELD != 'email'):
             fields[User.USERNAME_FIELD] = "permless"
 
         usr = User(**fields)
@@ -598,7 +619,7 @@ class AdminTests(AdminTestsBase):
             self.assertTrue(page.is_published('en'))
 
             response = self.admin_class.unpublish(request, page.pk, "en")
-            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.status_code, 302)
 
             page = self.reload(page)
             self.assertFalse(page.is_published('en'))
@@ -873,7 +894,7 @@ class PluginPermissionTests(AdminTestsBase):
 
         fields = dict(email="admin@django-cms.org", is_staff=True, is_active=True)
 
-        if(User.USERNAME_FIELD != 'email'):
+        if (User.USERNAME_FIELD != 'email'):
             fields[User.USERNAME_FIELD] = "admin"
 
         admin_user = User(**fields)
@@ -930,7 +951,7 @@ class PluginPermissionTests(AdminTestsBase):
             self.client.login(username='admin@django-cms.org', password='admin')
         else:
             self.client.login(username='admin', password='admin')
-        
+
         url = reverse('admin:cms_page_add_plugin')
         data = {
             'plugin_type': 'TextPlugin',
@@ -953,7 +974,7 @@ class PluginPermissionTests(AdminTestsBase):
             self.client.login(username='test@test.com', password='test@test.com')
         else:
             self.client.login(username='test', password='test')
-        
+
         url = reverse('admin:cms_page_edit_plugin', args=[plugin.id])
         response = self.client.post(url, dict())
         self.assertEqual(response.status_code, HttpResponseForbidden.status_code)
@@ -966,7 +987,7 @@ class PluginPermissionTests(AdminTestsBase):
         """User tries to remove a plugin but has no permissions. He can remove the plugin after he got the permissions"""
         plugin = self._create_plugin()
         _, normal_guy = self._get_guys()
-        
+
         if get_user_model().USERNAME_FIELD == 'email':
             self.client.login(username='test@test.com', password='test@test.com')
         else:
@@ -985,7 +1006,7 @@ class PluginPermissionTests(AdminTestsBase):
         """User tries to move a plugin but has no permissions. He can move the plugin after he got the permissions"""
         plugin = self._create_plugin()
         _, normal_guy = self._get_guys()
-        
+
         if get_user_model().USERNAME_FIELD == 'email':
             self.client.login(username='test@test.com', password='test@test.com')
         else:
@@ -1007,7 +1028,7 @@ class PluginPermissionTests(AdminTestsBase):
         """User tries to copy plugin but has no permissions. He can copy plugins after he got the permissions"""
         plugin = self._create_plugin()
         _, normal_guy = self._get_guys()
-        
+
         if get_user_model().USERNAME_FIELD == 'email':
             self.client.login(username='test@test.com', password='test@test.com')
         else:
@@ -1040,7 +1061,7 @@ class PluginPermissionTests(AdminTestsBase):
         settings = UserSettings(language="fr", clipboard=clipboard, user=admin_user)
         settings.save()
         self.assertEqual(Placeholder.objects.count(), 3)
-        
+
         if get_user_model().USERNAME_FIELD == 'email':
             self.client.login(username='admin@django-cms.org', password='admin@django-cms.org')
         else:
@@ -1090,7 +1111,7 @@ class PluginPermissionTests(AdminTestsBase):
             self.client.login(username='test', password='test')
         else:
             self.client.login(username='test@test.com', password='test@test.com')
-        
+
         self.assertEqual(1, CMSPlugin.objects.all().count())
         url = reverse('admin:cms_page_copy_language', args=[self._page.pk])
         data = dict(
@@ -1179,7 +1200,7 @@ class PluginPermissionTests(AdminTestsBase):
 
         username = getattr(admin_user, get_user_model().USERNAME_FIELD)
         self.client.login(username=username, password='admin')
-        
+
         url = reverse('admin:cms_page_add_plugin')
         data = {
             'plugin_type': 'TextPlugin',
@@ -1289,6 +1310,44 @@ class AdminFormsTests(AdminTestsBase):
             resp = self.client.post(base.URL_CMS_PAGE_ADVANCED_CHANGE % page2.pk, page2_data)
             self.assertContains(resp, '<div class="form-row errors reverse_id">')
 
+    def test_create_page_type(self):
+        page = create_page('Test', 'static.html', 'en', published=True, reverse_id="home")
+        for placeholder in Placeholder.objects.all():
+            add_plugin(placeholder, TextPlugin, 'en', body='<b>Test</b>')
+        page.publish('en')
+        self.assertEqual(Page.objects.count(), 2)
+        self.assertEqual(CMSPlugin.objects.count(), 4)
+        superuser = self.get_superuser()
+        with self.login_user_context(superuser):
+            response = self.client.get(
+                "%s?copy_target=%s&language=%s" % (reverse("admin:cms_page_add_page_type"), page.pk, 'en'))
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(Page.objects.count(), 3)
+            self.assertEqual(Page.objects.filter(reverse_id="page_types").count(), 1)
+            page_types = Page.objects.get(reverse_id='page_types')
+            self.assertRedirects(response,
+                                 "/en/admin/cms/page/add/?target=%s&position=first-child&add_page_type=1&copy_target=%s&language=en" % (
+                                     page_types.pk, page.pk))
+            # test no page types if no page types there
+            response = self.client.get(reverse('admin:cms_page_add'))
+            self.assertNotContains(response, "page_type")
+            # create out first page type
+            page_data = {
+                'title': 'type1', 'slug': 'type1', '_save': 1, 'template': 'static.html', 'site': 1,
+                'language': 'en'
+            }
+            response = self.client.post(
+                "/en/admin/cms/page/add/?target=%s&position=first-child&add_page_type=1&copy_target=%s&language=en" % (
+                    page_types.pk, page.pk), data=page_data)
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(Page.objects.count(), 4)
+            self.assertEqual(CMSPlugin.objects.count(), 6)
+            response = self.client.get(reverse('admin:cms_page_add'))
+            self.assertContains(response, "page_type")
+            # no page types available if you use the copy_target
+            response = self.client.get("%s?copy_target=%s&language=en" % (reverse('admin:cms_page_add'), page.pk))
+            self.assertNotContains(response, "page_type")
+
     def test_render_edit_mode(self):
         from django.core.cache import cache
 
@@ -1300,7 +1359,7 @@ class AdminFormsTests(AdminTestsBase):
         user = self.get_superuser()
         self.assertEqual(Placeholder.objects.all().count(), 4)
         with self.login_user_context(user):
-            with self.assertNumQueries(FuzzyInt(40, 65)):
+            with self.assertNumQueries(FuzzyInt(40, 66)):
                 output = force_unicode(self.client.get('/en/?edit').content)
             self.assertIn('<b>Test</b>', output)
             self.assertEqual(Placeholder.objects.all().count(), 9)
@@ -1328,6 +1387,42 @@ class AdminFormsTests(AdminTestsBase):
         with self.login_user_context(user):
             with self.assertNumQueries(FuzzyInt(18, 33)):
                 force_unicode(self.client.get('/en/admin/cms/page/'))
+
+    def test_smart_link_published_pages(self):
+        admin, staff_guy = self._get_guys()
+        page_url = '/en/admin/cms/page/published-pages/' # Not sure how to achieve this with reverse...
+
+        with self.login_user_context(staff_guy):
+            multi_title_page = create_page('main_title', 'col_two.html', 'en', published=True,
+                                           overwrite_url='overwritten_url',
+                                           menu_title='menu_title')
+
+            title = multi_title_page.get_title_obj()
+            title.page_title = 'page_title'
+            title.save()
+
+            multi_title_page.save()
+            publish_page(multi_title_page, admin, 'en')
+
+            # Non ajax call should return a 403 as this page shouldn't be accessed by anything else but ajax queries
+            self.assertEqual(403, self.client.get(page_url).status_code)
+
+            self.assertEqual(200,
+                             self.client.get(page_url, HTTP_X_REQUESTED_WITH='XMLHttpRequest').status_code
+            )
+
+            # Test that the query param is working as expected.
+            self.assertEqual(1, len(json.loads(self.client.get(page_url, {'q':'main_title'},
+                                                    HTTP_X_REQUESTED_WITH='XMLHttpRequest').content.decode("utf-8"))))
+
+            self.assertEqual(1, len(json.loads(self.client.get(page_url, {'q':'menu_title'},
+                                                    HTTP_X_REQUESTED_WITH='XMLHttpRequest').content.decode("utf-8"))))
+
+            self.assertEqual(1, len(json.loads(self.client.get(page_url, {'q':'overwritten_url'},
+                                                    HTTP_X_REQUESTED_WITH='XMLHttpRequest').content.decode("utf-8"))))
+
+            self.assertEqual(1, len(json.loads(self.client.get(page_url, {'q':'page_title'},
+                                                    HTTP_X_REQUESTED_WITH='XMLHttpRequest').content.decode("utf-8"))))
 
 
 class AdminPageEditContentSizeTests(AdminTestsBase):
@@ -1359,7 +1454,8 @@ class AdminPageEditContentSizeTests(AdminTestsBase):
                 old_response_size = len(response.content)
                 old_user_count = get_user_model().objects.count()
                 # create additionals user and reload the page
-                get_user_model().objects.create_user(username=USER_NAME, email=USER_NAME+'@django-cms.org', password=USER_NAME)
+                get_user_model().objects.create_user(username=USER_NAME, email=USER_NAME + '@django-cms.org',
+                                                     password=USER_NAME)
                 user_count = get_user_model().objects.count()
                 more_users_in_db = old_user_count < user_count
                 # we have more users
